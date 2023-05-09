@@ -4,34 +4,66 @@ export interface GithubProps {
 }
 
 const splitGithubUrl = (url: string) => {
-    const permalinkTypeRegex =
+    const permalinkRegex =
         /^https?:\/\/github\.com\/([\w-]+)\/([\w-]+)\/blob\/([a-f0-9]+)\/(.+?)#(.+)$/;
-    const wholeFileTypeRegex =
-        /^https?:\/\/github\.com\/([\w-]+)\/([\w-]+)\/blob\/([\w.-]+)\/(.+)$/;
+    const wholeFileRegex = /^https?:\/\/github\.com\/([\w-]+)\/([\w-]+)\/blob\/([\w.-]+)\/(.+)$/;
+    const multipleLineRegex = /^L\d+-L\d+$/;
 
-    const permalinkMatch = url.match(permalinkTypeRegex);
-    const wholeFileMatch = url.match(wholeFileTypeRegex);
+    let orgName = '';
+    let repoName = '';
+    let ref = '';
+    let fileName = '';
+    let lines = [];
 
-    if (permalinkMatch) {
-        const [, orgName, repoName, ref, fileName, hash] = permalinkMatch;
-        const lines = hash ? hash.replace(/L/g, '').split('-').map(Number) : [];
-        return { orgName, repoName, ref, fileName, lines };
-    } else if (wholeFileMatch) {
-        const [, orgName, repoName, ref, fileName] = wholeFileMatch;
-        return { orgName, repoName, ref, fileName, lines: [] };
+    if (url.match(permalinkRegex)) {
+        const match = url.match(permalinkRegex);
+
+        orgName = match[1];
+        repoName = match[2];
+        ref = match[3];
+        fileName = match[4];
+        const hash = match[5];
+
+        if (hash !== '') {
+            if (url.match(permalinkRegex)) {
+                if (hash.match(multipleLineRegex)) {
+                    lines = hash.replace(/L/g, '').split('-').map(Number);
+                } else {
+                    const singleLineNumberArray: number[] = [];
+                    const parsedInt = parseInt(hash.replace(/L/g, ''), 10);
+                    singleLineNumberArray.push(parsedInt);
+                    singleLineNumberArray.push(parsedInt);
+                    lines = singleLineNumberArray;
+                }
+            }
+        }
+    } else if (url.match(wholeFileRegex)) {
+        const match = url.match(wholeFileRegex);
+
+        orgName = match[1];
+        repoName = match[2];
+        ref = match[3];
+        fileName = match[4];
     }
+    return {
+        orgName,
+        repoName,
+        fileName,
+        ref,
+        lines,
+    };
 };
 
 const getLinesFromGithubFile = (content, lines) => {
     return content.slice(lines[0] - 1, lines[1]);
 };
 
-const fetchGithubFile = async (orgName, repoName, file, ref) => {
+const fetchGithubFile = async (orgName, repoName, file, ref, lines) => {
     const baseURL = `https://api.github.com/repos/${orgName}/${repoName}/contents/${file}?ref=${ref}`;
 
     const headers = {
         'User-Agent': 'request',
-        Authorization: 'Bearer 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',
+        // Authorization: 'Bearer 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',
     };
 
     const res = await fetch(baseURL, { headers }).catch((err) => {
@@ -40,7 +72,7 @@ const fetchGithubFile = async (orgName, repoName, file, ref) => {
 
     if (!res.ok) {
         return false;
-        // throw new Error(`Response status from ${baseURL}: ${res.status}`)
+        // throw new Error(`Response status from ${baseURL}: ${res.status}`);
     }
 
     const body = await res.text();
@@ -85,7 +117,8 @@ export const getGithubContent = async (url: string) => {
             urlObject.orgName,
             urlObject.repoName,
             urlObject.fileName,
-            urlObject.ref
+            urlObject.ref,
+            urlObject.lines
         );
 
         if (content) {
@@ -97,6 +130,5 @@ export const getGithubContent = async (url: string) => {
             }
         }
     }
-
-    return '';
+    return content;
 };
